@@ -1,171 +1,217 @@
 # Human Image Segmentation with PyTorch and U-Net
- 
-## Overview
 
-This project implements a binary human image segmentation pipeline using PyTorch. The objective is to learn a pixel-wise mapping from an RGB input image to a foreground mask that separates the human subject from the background. The notebook follows the full segmentation workflow: dataset inspection, paired image-mask preprocessing, synchronized augmentation, model construction with a pretrained convolutional encoder, training, validation, checkpointing, and visual inference.
+## Project Overview
 
-The implementation uses a U-Net segmentation model from `segmentation-models-pytorch` and is trained on paired human images and ground-truth masks from the `Human-Segmentation-Dataset-master` dataset. The final predictions are produced as binary masks using sigmoid activation followed by a fixed threshold.
+This project implements a deep learning pipeline for binary human image segmentation using PyTorch. The objective is to train a convolutional neural network that receives an RGB image as input and predicts a pixel-level foreground mask identifying the human region in the image.
 
-## Objectives
+The project follows the workflow from **Deep Learning with PyTorch: Image Segmentation** and is implemented in the notebook [`image_segmentation_with_pytorch.ipynb`](image_segmentation_with_pytorch.ipynb). The notebook covers the full segmentation lifecycle: loading an image-mask dataset, preparing synchronized augmentations, defining a custom PyTorch dataset, batching samples with `DataLoader`, building a pretrained U-Net model, training with segmentation-specific losses, saving the best checkpoint, and visualizing model predictions on validation samples.
 
-This project focuses on the following practical objectives for building an image segmentation system in PyTorch:
+The task is a binary semantic segmentation problem. Each input image has a corresponding ground-truth mask where foreground pixels represent the human subject and background pixels represent the non-human region. The model predicts a single-channel logit map, which is converted into a binary mask during inference.
 
-- Understand how image segmentation datasets are organized as paired image and mask files.
-- Build a custom PyTorch `Dataset` for image-mask segmentation samples.
-- Apply segmentation-safe augmentations so that images and masks are transformed consistently.
-- Load a pretrained convolutional segmentation architecture for transfer learning.
-- Define training and validation loops for a binary segmentation task.
-- Evaluate model behavior using loss curves and qualitative mask visualizations.
+## Learning Objectives
 
-## Dataset and Problem Formulation
+- Understand the structure of an image-mask segmentation dataset.
+- Use Albumentations to apply spatial augmentations consistently to images and masks.
+- Build a custom PyTorch `Dataset` class for paired image-mask loading.
+- Load segmentation data into batches with PyTorch `DataLoader`.
+- Use a pretrained convolutional segmentation model for binary mask prediction.
+- Create training and validation loops for a segmentation task.
+- Save the best-performing model checkpoint based on validation loss.
+- Perform inference by converting raw model logits into thresholded binary masks.
 
-The notebook clones the dataset from `https://github.com/parth1620/Human-Segmentation-Dataset-master.git` and reads metadata from `train.csv`. The CSV contains two main columns:
+## Technical Stack
 
-- `images`: path to the RGB training image.
-- `masks`: path to the corresponding ground-truth segmentation mask.
+- **Python**: Core programming language used in the notebook.
+- **PyTorch**: Tensor operations, model definition, training loop, backpropagation, optimization, and checkpointing.
+- **segmentation-models-pytorch**: Provides the U-Net architecture and pretrained encoder integration.
+- **timm EfficientNet-B0 encoder**: Pretrained encoder backbone used inside the U-Net model.
+- **Albumentations**: Image-mask augmentation library used for segmentation-safe transformations.
+- **OpenCV**: Image and mask reading, color conversion, and resizing.
+- **NumPy**: Array manipulation and mask preprocessing.
+- **Pandas**: CSV loading and dataset path management.
+- **scikit-learn**: Train-validation splitting with `train_test_split`.
+- **Matplotlib**: Visualization of images, ground-truth masks, and predicted masks.
+- **tqdm**: Progress bars for training and validation loops.
 
-The task is formulated as binary semantic segmentation. For every input image, the model predicts a single-channel mask where each pixel is classified as either human foreground or background. The mask is read in grayscale, converted to a channel-aware format, resized to a fixed spatial resolution, normalized to `[0, 1]`, and rounded to enforce binary targets.
+## Dataset Description
 
-The dataset is split with `train_test_split` using an 80/20 validation split and `random_state=42`, producing:
+The notebook uses the `Human-Segmentation-Dataset-master` dataset cloned from `parth1620/Human-Segmentation-Dataset-master`. The dataset metadata is read from `train.csv`, which contains two path columns:
 
-| Split | Samples |
-| --- | ---: |
-| Training | 232 |
-| Validation | 58 |
+- `images`: Path to the RGB training image.
+- `masks`: Path to the corresponding ground-truth segmentation mask.
 
-## Core Technologies
+The notebook reads the CSV into a Pandas DataFrame and performs an 80/20 train-validation split:
 
-| Component | Role in the Project |
-| --- | --- |
-| PyTorch | Tensor operations, model definition, training, validation, checkpointing, and inference |
-| `segmentation-models-pytorch` | Provides the pretrained U-Net architecture and binary Dice loss |
-| Albumentations | Applies image-mask augmentations for segmentation training |
-| OpenCV | Reads RGB images and grayscale masks from disk |
-| NumPy | Handles image and mask array transformations |
-| pandas | Loads and inspects the dataset CSV metadata |
-| scikit-learn | Creates the train-validation split |
-| Matplotlib | Visualizes images, masks, and predictions |
-| tqdm | Displays training and validation progress bars |
+- Total samples inferred from notebook output: `290`
+- Training samples: `232`
+- Validation samples: `58`
+- Split function: `train_test_split(df, test_size=0.2, random_state=42)`
+
+Each sample consists of an image and its aligned binary mask. Images are loaded as three-channel RGB inputs, while masks are loaded as grayscale arrays and converted into single-channel binary tensors.
 
 ## Project Workflow
 
-1. **Environment setup**
+1. **Environment and dependency setup**
+   - Installs `segmentation-models-pytorch`, `albumentations`, and `opencv-contrib-python`.
+   - Uses a CUDA device for GPU-accelerated model training.
 
-   The notebook installs the required segmentation libraries in a Colab GPU runtime, including `segmentation-models-pytorch`, `albumentations`, and `opencv-contrib-python`.
+2. **Dataset acquisition and inspection**
+   - Clones the human segmentation dataset.
+   - Loads `train.csv` into a DataFrame.
+   - Reads a sample image-mask pair and visualizes the RGB image beside the ground-truth mask.
 
-2. **Dataset loading and inspection**
+3. **Configuration definition**
+   - Defines dataset paths, device, image size, batch size, learning rate, epoch count, encoder name, and pretrained weights.
+   - Uses `IMG_SIZE = 320`, `BATCH_SIZE = 16`, `EPOCHS = 25`, and `LR = 0.003`.
 
-   The human segmentation dataset is cloned, and `train.csv` is loaded with pandas. A sample row is inspected by reading the RGB image with OpenCV, converting BGR to RGB, reading the associated mask in grayscale, and displaying the image-mask pair side by side.
+4. **Train-validation split**
+   - Splits the dataset into training and validation subsets using a fixed random seed.
+   - Produces `232` training samples and `58` validation samples.
 
-3. **Configuration**
+5. **Segmentation augmentation setup**
+   - Defines separate augmentation pipelines for training and validation.
+   - Applies spatial transforms to images and masks together so that mask alignment is preserved.
 
-   The main experiment settings are defined centrally:
+6. **Custom dataset construction**
+   - Implements a `SegmentationDataset` class that loads image-mask pairs, preprocesses them, applies augmentations, converts them to tensors, and returns them to the training loop.
 
-   | Parameter | Value |
-   | --- | --- |
-   | Device | `cuda` |
-   | Epochs | `25` |
-   | Learning rate | `0.003` |
-   | Image size | `320 x 320` |
-   | Batch size | `16` |
-   | Encoder | `timm-efficientnet-b0` |
-   | Encoder weights | `imagenet` |
+7. **Batch loading**
+   - Wraps the training and validation datasets in PyTorch `DataLoader` objects.
+   - Produces `15` training batches and `4` validation batches with batch size `16`.
 
-4. **Segmentation augmentation**
-
-   Albumentations is used to define separate augmentation pipelines for training and validation. The training pipeline resizes samples to `320 x 320` and applies horizontal and vertical flips with probability `0.5`. The validation pipeline only resizes the image-mask pair. Because Albumentations receives both `image` and `mask`, spatial transformations remain aligned across the input image and its segmentation target.
-
-5. **Custom dataset construction**
-
-   The `SegmentationDataset` class extends `torch.utils.data.Dataset` and implements the standard `__len__` and `__getitem__` methods. For each index, it reads the image and mask paths from the dataframe, loads the image as RGB, loads the mask as grayscale, resizes both arrays to the configured image size, applies optional augmentations, transposes arrays from HWC to CHW layout, casts them to `float32`, scales image intensities by `255.0`, and converts the mask into a binary tensor.
-
-6. **Batch loading**
-
-   The dataset objects are wrapped with PyTorch `DataLoader` instances. The training loader uses shuffling, while the validation loader keeps deterministic ordering. With a batch size of `16`, the notebook reports `15` training batches and `4` validation batches.
-
-   The batch tensor contract is:
-
-   | Tensor | Shape | Meaning |
-   | --- | --- | --- |
-   | Images | `[16, 3, 320, 320]` | Batch of normalized RGB images |
-   | Masks | `[16, 1, 320, 320]` | Batch of binary segmentation masks |
-
-7. **Model definition**
-
-   The model is defined as a PyTorch `nn.Module` wrapper around `smp.Unet`. It uses a `timm-efficientnet-b0` encoder initialized with ImageNet weights, accepts 3-channel RGB inputs, and produces 1-channel binary segmentation logits. The model returns raw logits during inference and returns both logits and training loss when ground-truth masks are supplied.
-
-8. **Loss function**
-
-   The training objective combines two complementary losses:
-
-   - `DiceLoss(mode='binary')`, which directly optimizes mask overlap.
-   - `BCEWithLogitsLoss`, which applies binary cross-entropy to raw logits in a numerically stable way.
-
-   The final loss is the sum of Dice loss and BCE-with-logits loss.
+8. **Model creation**
+   - Builds a U-Net segmentation model with a pretrained `timm-efficientnet-b0` encoder.
+   - Configures the network for binary segmentation with one output channel.
 
 9. **Training and validation**
-
-   The optimizer is Adam with learning rate `0.003`. Each training step moves images and masks to CUDA, clears gradients, computes logits and loss, backpropagates, updates model weights, and accumulates average epoch loss. Validation runs under `torch.no_grad()` with the model in evaluation mode. The best checkpoint is saved whenever validation loss improves.
+   - Trains the model for `25` epochs.
+   - Computes a combined Dice and binary cross-entropy loss.
+   - Evaluates validation loss after each epoch.
+   - Saves the best model checkpoint whenever validation loss improves.
 
 10. **Inference and visualization**
+    - Loads the saved best checkpoint.
+    - Runs inference on selected validation samples.
+    - Applies sigmoid activation and a `0.5` threshold to produce binary masks.
+    - Displays the original image, ground-truth mask, and predicted mask.
 
-    The notebook loads `best_mode.pt`, selects validation samples, computes raw logits, applies sigmoid activation, thresholds probabilities at `0.5`, and visualizes the input image, ground-truth mask, and predicted mask.
+## Data Preprocessing and Augmentation
+
+The notebook preprocesses every image-mask pair before it is returned by the dataset class. Images are read using OpenCV, converted from BGR to RGB, resized to `320 x 320`, transposed from height-width-channel format to channel-height-width format, cast to `float32`, and normalized by dividing pixel values by `255.0`.
+
+Masks are read in grayscale mode, resized to the same spatial resolution, expanded to include a channel dimension, transposed to channel-first format, cast to `float32`, scaled by `255.0`, and rounded to obtain binary mask values. This produces masks compatible with binary segmentation loss functions.
+
+Albumentations is used because segmentation tasks require image and mask transforms to remain spatially synchronized. The notebook defines two augmentation pipelines:
+
+- Training augmentations:
+  - `Resize(320, 320)`
+  - `HorizontalFlip(p=0.5)`
+  - `VerticalFlip(p=0.5)`
+- Validation augmentations:
+  - `Resize(320, 320)`
+
+The training augmentations increase variation in object orientation while preserving the pixel-level relationship between each image and its mask. The validation pipeline keeps preprocessing deterministic by resizing only.
+
+## Custom PyTorch Dataset
+
+The `SegmentationDataset` class extends PyTorch's `Dataset` abstraction and provides the project-specific logic required for paired segmentation data.
+
+The dataset stores the DataFrame and augmentation pipeline during initialization. Its `__len__` method returns the number of rows in the DataFrame, and its `__getitem__` method retrieves one image-mask pair by index.
+
+For each sample, the dataset:
+
+- Reads the image path and mask path from the DataFrame row.
+- Loads the image with OpenCV and converts it to RGB.
+- Loads the mask as a grayscale image.
+- Resizes both image and mask to `320 x 320`.
+- Applies Albumentations transforms to the image and mask together.
+- Converts image and mask arrays from `HWC` layout to `CHW` tensor layout.
+- Normalizes the image tensor to the `[0, 1]` range.
+- Converts the mask tensor into binary foreground-background values.
+
+The resulting tensors match the shapes expected by the model and loss functions. A batch sampled from the training loader has image shape `torch.Size([16, 3, 320, 320])` and mask shape `torch.Size([16, 1, 320, 320])`.
 
 ## Model Architecture
 
-The segmentation network is a U-Net model created with `segmentation_models_pytorch.Unet`. U-Net is suitable for dense prediction tasks because it combines encoder features that capture semantic context with decoder features that recover spatial detail. In this project, the encoder is `timm-efficientnet-b0`, pretrained on ImageNet, which provides transfer-learned visual features before task-specific segmentation training.
+The project defines a `SegmentationModel` class that wraps a U-Net architecture from `segmentation_models_pytorch`.
 
-Model configuration:
+The model configuration is:
 
-| Setting | Value |
-| --- | --- |
-| Architecture | U-Net |
-| Encoder backbone | `timm-efficientnet-b0` |
-| Encoder initialization | ImageNet pretrained weights |
-| Input channels | `3` |
-| Output classes | `1` |
-| Output activation in model | `None` |
-| Inference activation | `sigmoid` |
-| Prediction threshold | `0.5` |
+- Architecture: `smp.Unet`
+- Encoder: `timm-efficientnet-b0`
+- Encoder weights: `imagenet`
+- Input channels: `3`
+- Output classes: `1`
+- Output activation inside model: `None`
 
-Using `activation=None` keeps the forward pass output as raw logits. This is appropriate because `BCEWithLogitsLoss` expects logits directly, and sigmoid is applied explicitly only during inference.
+Using `activation=None` makes the model return raw logits instead of probabilities. This is appropriate because the training objective includes `BCEWithLogitsLoss`, which internally applies the sigmoid operation in a numerically stable way.
 
-## Training Configuration
+The U-Net design combines an encoder-decoder structure with skip connections. The EfficientNet-B0 encoder extracts hierarchical visual features from the input image, while the decoder reconstructs a dense spatial prediction map. The final output is a single-channel logit tensor representing the predicted human foreground score for each pixel.
 
-The notebook trains for `25` epochs on CUDA using Adam. The model checkpointing strategy is based on validation loss: whenever the current validation loss is lower than the best previous validation loss, the model state dictionary is saved as `best_mode.pt`.
+## Loss Function and Optimization
 
-| Configuration Item | Value |
-| --- | --- |
-| Optimizer | Adam |
-| Learning rate | `0.003` |
-| Epochs | `25` |
-| Batch size | `16` |
-| Training batches | `15` |
-| Validation batches | `4` |
-| Loss | Binary Dice loss + BCE with logits |
-| Checkpoint file | `best_mode.pt` |
+The model is optimized with a combined segmentation loss:
 
-This setup trains the model to optimize both pixel-level binary classification and foreground-mask overlap, which is important for segmentation tasks where the quality of object boundaries and region coverage matters.
+```python
+DiceLoss(mode="binary") + BCEWithLogitsLoss()
+```
 
-## Results
+`DiceLoss` directly targets mask overlap, which is important for segmentation quality because it measures agreement between predicted and ground-truth foreground regions. `BCEWithLogitsLoss` provides pixel-wise binary classification supervision and is well suited for raw logits. Combining both losses gives the model feedback at the region level and the pixel level.
 
-The training logs show rapid validation improvement after the first few epochs. The best validation checkpoint is saved at epoch `15`.
+The optimizer is Adam:
 
-| Training Stage | Epoch | Train Loss | Validation Loss |
-| --- | ---: | ---: | ---: |
-| Initial epoch | 1 | 0.8134 | 2.4740 |
-| Best validation checkpoint | 15 | 0.1434 | 0.1496 |
-| Final epoch | 25 | 0.0942 | 0.1838 |
+- Optimizer: `torch.optim.Adam`
+- Learning rate: `0.003`
 
-From epoch 1 to the best checkpoint, validation loss decreased from `2.4740` to `0.1496`, an improvement of approximately `93.95%`. The final epoch achieved the lowest training loss, but the best saved model is selected from epoch 15 because it has the lowest validation loss.
+Adam is used to update all model parameters based on gradients computed during backpropagation.
 
-Qualitative inference is performed on validation indices `38`, `3`, `14`, `18`, `35`, and `49`. For each sample, the notebook loads `best_mode.pt`, forwards the image through the model, applies sigmoid activation to convert logits into probabilities, thresholds the probability map at `0.5`, and displays the predicted mask alongside the original image and ground-truth mask. These visual comparisons verify that the trained model learned to produce human foreground masks rather than only minimizing a numeric loss.
+## Training Strategy
 
-## Key Takeaways
+Training is performed for `25` epochs on the CUDA device. The notebook defines separate functions for training and validation:
 
-- Segmentation datasets require synchronized preprocessing for images and masks; geometric transforms must be applied consistently to both.
-- A custom PyTorch `Dataset` provides precise control over image loading, mask loading, tensor formatting, normalization, and binary target conversion.
-- Transfer learning with a pretrained EfficientNet encoder allows the U-Net model to start from strong visual features instead of training all representations from scratch.
-- Combining Dice loss with BCE-with-logits balances region overlap quality with stable binary pixel classification.
-- Validation-based checkpointing is necessary because the final training epoch is not always the best generalizing model.
-- Qualitative mask visualization is an essential complement to loss tracking for image segmentation projects.
+- `train_fn`: Enables training mode, computes the loss for each batch, performs backpropagation, updates parameters, and returns average training loss.
+- `eval_fn`: Enables evaluation mode, disables gradient computation with `torch.no_grad()`, computes validation loss, and returns average validation loss.
+
+During each epoch, the model first iterates through the training loader, then evaluates on the validation loader. The notebook tracks `best_valid_loss`, initialized to infinity, and saves the model state dictionary to `best_mode.pt` whenever validation loss improves.
+
+The best observed validation loss occurs at epoch `15`:
+
+- Epoch `15` training loss: `0.14342068284749984`
+- Epoch `15` validation loss: `0.14957228675484657`
+
+The final epoch logs are:
+
+- Epoch `25` training loss: `0.09417678167422612`
+- Epoch `25` validation loss: `0.18382345139980316`
+
+The training curve shows that the model learns quickly during the first few epochs, with validation loss dropping from `2.473999261856079` at epoch `1` to `0.19941697269678116` by epoch `5`. Although training loss continues decreasing through epoch `25`, the best validation checkpoint is saved earlier, which helps retain the model state with the strongest validation performance observed in the notebook.
+
+## Inference Pipeline
+
+Inference is performed on selected validation samples after loading the saved checkpoint:
+
+```python
+model.load_state_dict(torch.load("/content/best_mode.pt"))
+```
+
+For each validation example, the notebook retrieves an image and mask from `validset`, adds a batch dimension with `unsqueeze(0)`, moves the image tensor to the CUDA device, and passes it through the model. The output logits are converted to probabilities with sigmoid:
+
+```python
+pred_mask = torch.sigmoid(logits_mask)
+```
+
+The probability map is then thresholded at `0.5`:
+
+```python
+pred_mask = (pred_mask > 0.5) * 1.0
+```
+
+This produces a binary predicted mask where pixels above the threshold are treated as human foreground and pixels below the threshold are treated as background. The notebook visualizes the image, ground-truth mask, and predicted mask using `helper.show_image`.
+
+## Results and Observations
+
+The notebook demonstrates that a pretrained U-Net can learn the human segmentation task effectively from a relatively small image-mask dataset. The model improves substantially during early training, and the validation loss reaches its best recorded value of `0.14957228675484657` at epoch `15`.
+
+The inference visualizations compare predicted masks against ground-truth masks for multiple validation indices, including `38`, `3`, `14`, `18`, `35`, and `49`. These visual checks provide qualitative confirmation that the trained model is producing foreground masks from RGB input images.
+
+The notebook reports loss values only, so the README does not claim additional metrics such as IoU, Dice coefficient, precision, recall, or pixel accuracy. The documented results are therefore based on the observed training and validation losses and the qualitative image-mask-prediction visualizations produced in the notebook.
