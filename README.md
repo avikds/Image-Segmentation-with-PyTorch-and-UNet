@@ -99,7 +99,7 @@ Each sample consists of an image and its aligned binary mask. Images are loaded 
 
 The notebook preprocesses every image-mask pair before it is returned by the dataset class. Images are read using OpenCV, converted from BGR to RGB, resized to `320 x 320`, transposed from height-width-channel format to channel-height-width format, cast to `float32`, and normalized by dividing pixel values by `255.0`.
 
-Masks are read in grayscale mode, resized to the same spatial resolution, expanded to include a channel dimension, transposed to channel-first format, cast to `float32`, scaled by `255.0`, and rounded to obtain binary mask values. This produces masks compatible with binary segmentation loss functions.
+Masks are read in grayscale mode, resized to the same spatial resolution, expanded to include a channel dimension, transposed to channel-first format, cast to `float32`, scaled by `255.0` to normalize values, and rounded to obtain binary mask values. This produces masks compatible with binary segmentation loss functions.
 
 Albumentations is used because segmentation tasks require image and mask transforms to remain spatially synchronized. The notebook defines two augmentation pipelines:
 
