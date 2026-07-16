@@ -1,5 +1,5 @@
 # Human Image Segmentation with PyTorch and U-Net
-
+ 
 ## Overview
 
 This project implements a deep learning pipeline for binary human image segmentation using PyTorch. The objective is to train a convolutional neural network that receives an RGB image as input and predicts a pixel-level foreground mask identifying the human region in the image.
