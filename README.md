@@ -1,4 +1,4 @@
-# Human Image Segmentation with PyTorch and U-Net
+# Human Image Segmentation with PyTorch and U-Net 
  
 ## Overview
 
